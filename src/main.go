@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"reflect"
 	"strings"
@@ -138,6 +139,11 @@ func (toa *TraefikOidcAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 		return
 	}
 
+	if toa.Config.AuthenticateOnBackend401 {
+		toa.serveHTTPAuthenticateOnBackend401(rw, req)
+		return
+	}
+
 	session, updateSession, claims, err := toa.getSessionForRequest(req)
 
 	if err == nil && session != nil {
@@ -183,6 +189,68 @@ func (toa *TraefikOidcAuth) ServeHTTP(rw http.ResponseWriter, req *http.Request)
 	clearChunkedCookie(toa.Config, rw, req, getSessionCookieName(toa.Config))
 
 	toa.handleUnauthenticated(rw, req)
+}
+
+func (toa *TraefikOidcAuth) serveHTTPAuthenticateOnBackend401(rw http.ResponseWriter, req *http.Request) {
+	session, updateSession, claims, err := toa.getSessionForRequest(req)
+	hasValidSession := err == nil && session != nil
+
+	if hasValidSession {
+		if strings.HasPrefix(req.RequestURI, toa.Config.LogoutUri) {
+			toa.handleLogout(rw, req, session)
+			return
+		}
+
+		if session.Id == "AuthorizationHeader" || session.Id == "AuthorizationCookie" || toa.Config.Authorization.CheckOnEveryRequest {
+			session.IsAuthorized = isAuthorized(toa.logger, toa.Config.Authorization, claims)
+		}
+
+		if !session.IsAuthorized {
+			toa.handleUnauthorized(rw, req)
+			return
+		}
+
+		err = toa.attachHeaders(req, session, claims)
+		if err != nil {
+			toa.logger.Log(logging.LevelError, "Error while attaching headers: %s", err.Error())
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if updateSession {
+			toa.storeSessionAndAttachCookie(session, rw)
+		}
+	} else {
+		toa.logger.Log(logging.LevelInfo, "Verifying token: %s", err.Error())
+	}
+
+	proxyResponse := httptest.NewRecorder()
+	toa.sanitizeForUpstream(req)
+	toa.next.ServeHTTP(proxyResponse, req)
+
+	if proxyResponse.Code != http.StatusUnauthorized {
+		copyRecordedResponse(proxyResponse, rw)
+		return
+	}
+
+	if hasValidSession {
+		copyRecordedResponse(proxyResponse, rw)
+		return
+	}
+
+	clearChunkedCookie(toa.Config, rw, req, getSessionCookieName(toa.Config))
+	toa.handleUnauthenticated(rw, req)
+}
+
+func copyRecordedResponse(from *httptest.ResponseRecorder, to http.ResponseWriter) {
+	for key, values := range from.Header() {
+		for _, value := range values {
+			to.Header().Add(key, value)
+		}
+	}
+
+	to.WriteHeader(from.Code)
+	_, _ = to.Write(from.Body.Bytes())
 }
 
 func (toa *TraefikOidcAuth) sanitizeForUpstream(req *http.Request) {

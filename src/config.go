@@ -61,6 +61,12 @@ type Config struct {
 
 	BypassAuthenticationRule string `json:"bypass_authentication_rule"`
 
+	// When enabled, requests are first forwarded to the upstream service.
+	// If the upstream answers with 401 and there is no valid session, the middleware starts
+	// the normal unauthenticated flow (redirect/challenge/401 depending on UnauthorizedBehavior).
+	// If a valid session is already present and upstream still returns 401, the 401 is returned as-is.
+	AuthenticateOnBackend401 bool `json:"authenticate_on_backend_401"`
+
 	ErrorPages *errorPages.ErrorPagesConfig `json:"error_pages"`
 
 	RequestedResources []string `json:"requested_resources"`

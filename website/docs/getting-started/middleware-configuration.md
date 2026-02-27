@@ -45,6 +45,7 @@ But: If you're using YAML-files for configuration you can use [traefik's templat
 | `Authorization` | no | [`Authorization`](#authorization) | *none* | Authorization Configuration. See *Authorization* block. |
 | `Headers` | no | [`Header`](#header) | *none* | Supplies a list of headers which will be attached to the upstream request. See *Header* block. |
 | `BypassAuthenticationRule`* | no | `string` | *none* | Specifies an optional rule to bypass authentication. See [Bypass Authentication Rule](./bypass-authentication-rule.md) for more details. |
+| `AuthenticateOnBackend401`* | no | `bool` | `false` | Forwards requests to the backend first and only starts authentication when the backend responds with `401`. If a valid session already exists and the backend still answers `401`, that `401` is returned unchanged. |
 | `ErrorPages` | no | [`ErrorPages`](#error-pages) | *none* | Allows you to customize some error pages. See *ErrorPages* block. |
 | `RequestedResources` | no | `string[]`| *none* | An array of resource URIs according to [RFC 8707](https://www.rfc-editor.org/rfc/rfc8707) for which the token should be requested. | 
 
